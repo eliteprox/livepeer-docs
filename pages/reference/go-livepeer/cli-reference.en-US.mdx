@@ -56,7 +56,7 @@ transcoder: Set to true to be an transcoder. Default `false`
 
 broadcaster: Set to true to be an broadcaster. Default `false`
 
-orchSecret: Shared secret with the orchestrator as a standalone transcoder. No default
+orchSecret: Shared secret with the orchestrator as a standalone transcoder or path to file"
 
 transcodingOptions: Transcoding options for broadcast job, or path to json config. Default `P240p30fps16x9,P360p30fps16x9`
 
@@ -78,11 +78,11 @@ sceneClassificationModelPath: Path to scene classification model. No default
 ### Onchain
 
 ```
-ethAcctAddr: Existing Eth account address. No default
+ethAcctAddr: Existing Eth account address. For use when multiple ETH accounts exist in keystore directory.
 
-ethPassword: Password for existing Eth account address. No default
+ethPassword: Password for existing Eth account addressor path to file.
 
-ethKeystorePath: Path for the Eth Key. No default
+ethKeystorePath: Path to ETH keystore directory or keyfile. If keyfile, overrides -ethAcctAddr and uses parent directory
 
 ethOrchAddr: address of an on-chain registered orchestrator. No default
 
@@ -115,6 +115,8 @@ maxPricePerUnit: The maximum transcoding price (in wei) per 'pixelsPerUnit' a br
 pixelsPerUnit: Amount of pixels per unit. Set to '> 1' to have smaller price granularity than 1 wei / pixel. Default `1`
 
 autoAdjustPrice: Enable/disable automatic price adjustments based on the overhead for redeeming tickets. Default `true`
+
+pricePerBroadcaster: Json list of price per broadcaster or path to json config file. Example: {"broadcasters":[{"ethaddress":"address1","priceperunit":1000,"pixelsperunit":1},{"ethaddress":"address2","priceperunit":1200,"pixelsperunit":1}]}`
 
 blockPollingInterval: Interval in seconds at which different blockchain event services poll for blocks. Default `5`
 
