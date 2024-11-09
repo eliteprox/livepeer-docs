@@ -549,6 +549,7 @@
           "pages": [
             "ai/orchestrators/get-started",
             "ai/orchestrators/models-config",
+            "ai/orchestrators/model-stacking",
             "ai/orchestrators/models-download",
             "ai/orchestrators/start-orchestrator",
             "ai/orchestrators/ai-worker",

@@ -1,0 +1,140 @@
+# Model Stacking Guide
+
+> ⚠️ **Important Notice**: Attaching external containers may affect performance, leading to slower processing times and potentially reducing the likelihood of being selected for jobs. Additionally, if memory is exhausted, the orchestrator will be unable to receive new jobs until it is restarted, as a recovery protocol has not yet been implemented. Please proceed with caution.
+
+*This document provides a brief guide for stacking models on GPUs using experimental features.*
+
+## How to Stack Models on GPUs
+
+The AI network code includes an experimental feature that allows you to attach any externally running container to your orchestrator. The orchestrator expects the container to expose the correct endpoints, otherwise, it will fail. If the container is running correctly behind these endpoints, the orchestrator will recognize it as a locally attached container and process jobs as usual, while also managing fee redemptions.
+
+## Requirements
+
+- **Orchestrator Setup**: Must be a top 100 orchestrator already processing AI jobs. For reference, please follow the setup instructions provided in the official [Livepeer AI Orchestrator Guide](https://docs.livepeer.org/ai/orchestrators/get-started).
+- **GPU Specifications**: A GPU with at least **12 GB of VRAM** is required to handle AI workloads.
+    - **Per-Container VRAM**: Each container should allocate **4 GB of VRAM**.
+    - **Additional Buffer**: Ensure an additional **4 GB of VRAM** is available as a buffer for optimal performance.
+
+### Steps to Stack Models:
+
+1. **Download the required containers** (e.g. [segment-anything-2](https://hub.docker.com/layers/livepeer/ai-runner/segment-anything-2/images/sha256-b9f3406c77a4af1acb1d431c7324e5621c073ae861150a23e354abbed5b6db6a?context=explore)).
+
+2. ****:
+<Tabs>
+  <Tab title="Start the containers using Docker">
+2. **Start the containers using Docker**:    
+    Run the following commands to initialize the containers:
+    
+    ```bash
+    docker run -d \
+      --name runner-sam2-1 \
+      --restart unless-stopped \
+      -v /home/user/models:/models:rw \
+      -e PIPELINE=segment-anything-2 \
+      -e MODEL_ID=facebook/sam2-hiera-large \
+      --gpus '"device=0"' \
+      -p 9000:9000 \
+      livepeer/ai-runner:segment-anything-2 \
+      uvicorn app.main:app --log-config app/cfg/uvicorn_logging_config.json --host 0.0.0.0 --port 9000
+    
+    docker run -d \
+      --name runner-sam2-2 \
+      --restart unless-stopped \
+      -v /home/user/models:/models:rw \
+      -e PIPELINE=segment-anything-2 \
+      -e MODEL_ID=facebook/sam2-hiera-large \
+      --gpus '"device=0"' \
+      -p 9001:9001 \
+      livepeer/ai-runner:segment-anything-2 \
+      uvicorn app.main:app --log-config app/cfg/uvicorn_logging_config.json --host 0.0.0.0 --port 9001
+    ```
+  </Tab>
+  <Tab title="Start the containers using Docker compose">
+  ```
+  services:
+  ai-runner:
+    image: livepeer/ai-runner:v0.7.0
+    environment:
+      - PIPELINE=image-to-video
+      - HF_TOKEN=optionally_include_token
+      - MODEL_ID=stabilityai/stable-video-diffusion-img2vid-xt-1-1
+      - SFAST=true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+              driver: nvidia
+              device_ids: ["0"]
+    ports:
+      - "8027:8000"
+    volumes:
+      - /livepeer/ai/data/models:/models
+    restart: unless-stopped
+  ```
+  </Tab>
+</Tabs>
+    
+3. **Verify the containers are running**:
+    
+    To verify that the containers are functioning and accepting requests, open your browser and visit the following URLs:
+    
+    - `https://localhost:9000/docs`
+    - `https://localhost:9001/docs`
+    
+    Use the Swagger interface to send a test request. If you're working on a headless system or prefer using the command line, you can use the following `curl` command to send a POST request:
+    
+    ```bash
+    curl -X POST http://<gateway-ip>/segment-anything-2 \
+        -F model_id="facebook/sam2-hiera-large" \
+        -F point_coords="[[120,100],[120,50]]" \
+        -F point_labels="[1,0]" \
+        -F image=@<PATH_TO_IMAGE>/cool-cat.png
+    ```
+    
+4. Use this [SAM2 stacking speed test script](https://github.com/rickstaa/livepeer-ai-scripts/blob/main/scripts/sam2_stacking_speed_test.bash) to determine how many containers you can run simultaneously without increasing the individual request time by more than 25%.
+5. Use `nvidia-smi` to verify that at least **4 GB of VRAM** remains available on the GPU as a buffer to accommodate potential increases in VRAM usage due to unforeseen circumstances.
+6. **Create a stacking model configuration file**:
+    
+    You can link the running containers to the orchestrator using the experimental `url` field in your model configuration file. Here's an example configuration:
+    
+    ```json
+    [
+      {
+        "pipeline": "segment-anything-2",
+        "model_id": "facebook/sam2-hiera-large",
+        "url": "<http://localhost:9000>",
+        "price_per_unit": 2415,
+        "pixels_per_unit": 1e11,
+        "currency": "USD",
+        "warm": true
+      },
+      {
+        "pipeline": "segment-anything-2",
+        "model_id": "facebook/sam2-hiera-large",
+        "url": "<http://localhost:9001>",
+        "price_per_unit": 2415,
+        "pixels_per_unit": 1e11,
+        "currency": "USD",
+        "warm": true
+      }
+    ]
+    ```
+    
+7. **Start the orchestrator**:
+    
+    Start your orchestrator as you would normally, but point it to the new model configuration file (e.g. `aiModels=<MODEL_CONFIG_FOLDER>/aiModelsSAM2-multi.json`).
+
+8. **Check the orchestrator logs**:
+    
+    Ensure the following log messages are printed, indicating that the external containers have been successfully attached:
+    
+    ```
+    I0916 09:59:54.856502 2740906 pricefeedwatcher.go:164] Starting PriceFeed watch loop
+    2024/09/16 09:59:55 INFO Starting external container name=segment-anything-2_facebook-sam2-hiera-large_http://localhost:9000 modelID=facebook/sam2-hiera-large
+    I0916 09:59:55.362920 2740906 starter.go:1337] Capability segment-anything-2 (ID: 32) advertised with model constraint facebook/sam2-hiera-large at price 10453901.142 wei per compute unit
+    2024/09/16 09:59:55 INFO Starting external container name=segment-anything-2_facebook-sam2-hiera-large_http://localhost:9001 modelID=facebook/sam2-hiera-large
+    I0916 09:59:55.964506 2740906 starter.go:1337] Capability segment-anything-2 (ID: 32) advertised with model constraint facebook/sam2-hiera-large at price 10453901.142 wei per compute unit
+    ```
+    
+By following these steps, you should be able to stack models on GPUs using externally running containers attached to your orchestrator.
